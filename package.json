@@ -41,14 +41,14 @@
     "wechat"
   ],
   "license": "MIT",
-  "author": "xiezhongyuan",
+  "author": "81502063-dev",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/xiezhongyuan/dsh-3min.git"
+    "url": "git+https://github.com/81502063-dev/dsh-3min.git"
   },
-  "homepage": "https://github.com/xiezhongyuan/dsh-3min#readme",
+  "homepage": "https://github.com/81502063-dev/dsh-3min#readme",
   "bugs": {
-    "url": "https://github.com/xiezhongyuan/dsh-3min/issues"
+    "url": "https://github.com/81502063-dev/dsh-3min/issues"
   },
   "icon": "docs/screenshot.png",
   "engines": {
