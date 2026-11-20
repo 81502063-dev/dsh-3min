@@ -1,0 +1,64 @@
+{
+  "name": "dsh-news-3min",
+  "version": "1.0.0",
+  "description": "新闻三分钟 · 每日新闻搜集与编稿工作台（稿源限定《互联网新闻信息稿源单位名单》），左侧栏入口 + 抓取打分 + 编稿台 + 成稿导出",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "web",
+    "data",
+    "docs/screenshot.png",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ],
+      "platform": "web"
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "news",
+    "newsletter",
+    "briefing",
+    "editorial",
+    "wechat"
+  ],
+  "license": "MIT",
+  "icon": "docs/screenshot.png",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-tools": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  }
+}

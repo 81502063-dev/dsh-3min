@@ -1,0 +1,9 @@
+node_modules/
+.tmp/
+*.log
+boot.log
+days/
+settings.json
+sources.json
+.DS_Store
+Thumbs.db

@@ -1,0 +1,4 @@
+- insert:
+    - id: news-3min
+      name: dsh-news-3min
+      config: {}
