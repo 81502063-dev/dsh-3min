@@ -14,6 +14,8 @@ const S = {
   sort: 'total',
   drawer: false,
   metaOpen: false,
+  srcDraft: null, // 稿源编辑草稿 { enabled, removed, custom }，保存后置空
+  srcForm: { name: '', url: '', category: '都市', weight: 1 },
   job: null,
   preview: '',
   showSections: false,
@@ -431,10 +433,50 @@ async function refreshPreview() {
 
 /* ── 设置抽屉 ─────────────────────────────────────── */
 
+/** 与 lib/sources.js 的 customSourceId 同一算法：名称 + 列表页 → 稳定 id */
+function customSourceId(name, url) {
+  const seed = `${String(name || '').trim()}|${String(url || '').trim()}`
+  let h = 0
+  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0
+  return `custom-${h.toString(36)}`
+}
+
+/** 从服务端状态生成一份可编辑草稿 */
+function buildSourceDraft() {
+  const d = dayData()
+  const enabled = {}
+  const custom = []
+  for (const s of d.sourceList || []) {
+    enabled[s.id] = s.enabled !== false
+    if (s.builtin === false) {
+      custom.push({
+        id: s.id,
+        name: s.name,
+        listName: s.listName || s.name,
+        category: s.category,
+        weight: s.weight,
+        list: s.list || [],
+      })
+    }
+  }
+  return { enabled, removed: [...(d.sourceRemoved || [])], custom }
+}
+
+function srcDraft() {
+  if (!S.srcDraft) S.srcDraft = buildSourceDraft()
+  return S.srcDraft
+}
+
 function drawer() {
   const d = dayData()
   const st = d.settings || {}
-  const sources = d.sourceList || []
+  const draft = srcDraft()
+  const builtinMeta = new Map((d.builtinSources || []).map((s) => [s.id, s]))
+  const rows = []
+  for (const s of d.sourceList || []) if (!draft.removed.includes(s.id)) rows.push(s)
+  for (const c of draft.custom) if (!rows.some((r) => r.id === c.id)) rows.push({ ...c, builtin: false })
+  const removedRows = draft.removed.map((id) => builtinMeta.get(id) || { id, name: id })
+  const enabledCount = rows.filter((r) => draft.enabled[r.id] !== false).length
   const hits = S.hits || []
   return `
     <div class="drawer-mask" data-act="drawer-close">
@@ -448,19 +490,46 @@ function drawer() {
           <div class="row"><label>模型三轴打分<small>${d.aiAvailable ? '模型可用' : '模型不可用，仅用关键词规则'}</small></label><label class="switch"><input type="checkbox" data-set="aiEnabled" ${st.aiEnabled !== false ? 'checked' : ''} /><span></span></label></div>
           <div class="row"><label>成稿显示小标题</label><label class="switch"><input type="checkbox" data-set="showSectionTitles" ${st.showSectionTitles ? 'checked' : ''} /><span></span></label></div>
           <div class="row"><label>定时自动抓取</label><label class="switch"><input type="checkbox" data-set="autoFetch" ${st.autoFetch !== false ? 'checked' : ''} /><span></span></label></div>
+          <div class="sub-h">新闻筛选机制<small>留空 = 用内置「有趣 / 有用 / 有共鸣」三轴；填了就以你写的为准，并随打分、头条、改写一起发给模型</small></div>
+          <textarea class="rule-text" data-set="screenRule" rows="6" placeholder="例：优先河南本地；与普通人钱袋子、出行、健康、办事直接相关的先选；国际新闻只留会影响中国的；明星八卦、体育比分、股市行情不要。">${esc(st.screenRule || '')}</textarea>
           <div class="row"><label>数据目录<small>${esc(st.dataDir || '')}</small></label></div>
           <div class="row" style="border:0"><button class="btn primary" data-act="save-settings">保存设置</button></div>
 
-          <div class="sub-h">稿源（${sources.filter((s) => s.enabled).length}/${sources.length} 启用）</div>
+          <div class="sub-h">稿源（${enabledCount}/${rows.length} 启用）<div class="spacer"></div>${
+            removedRows.length ? `<button class="btn sm ghost" data-act="src-restore-all">恢复 ${removedRows.length} 个已删来源</button>` : ''
+          }</div>
           <div class="src-grid">
-            ${sources
+            ${rows
               .map(
-                (s) =>
-                  `<label title="${esc(s.listName)} · ${esc(s.category)}"><input type="checkbox" data-src="${esc(s.id)}" ${s.enabled ? 'checked' : ''} /><span>${esc(s.name)}</span></label>`,
+                (s) => `<div class="src-item">
+                  <label title="${esc(s.listName || s.name)} · ${esc(s.category)}${s.builtin === false ? ' · 自定义' : ''}">
+                    <input type="checkbox" data-src="${esc(s.id)}" ${draft.enabled[s.id] !== false ? 'checked' : ''} />
+                    <span>${esc(s.name)}${s.builtin === false ? '<i class="tag">自建</i>' : ''}</span>
+                  </label>
+                  <button class="src-del" data-act="src-del" data-id="${esc(s.id)}" title="${
+                    s.builtin === false ? '删除这个自定义来源' : '从名单里删掉（可恢复）'
+                  }">×</button>
+                </div>`,
               )
               .join('')}
           </div>
-          <div class="row" style="border:0;margin-top:8px"><button class="btn sm" data-act="save-sources">保存稿源选择</button></div>
+          ${
+            removedRows.length
+              ? `<div class="src-removed">已删除：${removedRows
+                  .map((s) => `<span>${esc(s.name)}<button class="src-back" data-act="src-restore" data-id="${esc(s.id)}" title="恢复">↺</button></span>`)
+                  .join('')}</div>`
+              : ''
+          }
+          <div class="src-add">
+            <input type="text" data-add="name" placeholder="来源名称，如 洛阳网" value="${esc(S.srcForm.name)}" />
+            <input type="text" data-add="url" placeholder="列表页地址 https://…" value="${esc(S.srcForm.url)}" />
+            <select data-add="category">${(d.categories || [])
+              .map((c) => `<option value="${esc(c)}" ${S.srcForm.category === c ? 'selected' : ''}>${esc(c)}</option>`)
+              .join('')}</select>
+            <input type="number" data-add="weight" min="0.4" max="1.6" step="0.2" value="${esc(S.srcForm.weight)}" title="权重 0.4–1.6，越高越容易进候选池" />
+            <button class="btn sm" data-act="src-add">添加</button>
+          </div>
+          <div class="row" style="border:0;margin-top:8px"><button class="btn sm primary" data-act="save-sources">保存稿源设置</button></div>
 
           <div class="sub-h">合规检索 · ${esc((d.whitelist && d.whitelist.version) || '2025-08')} 版名单（${(d.whitelist && d.whitelist.total) || 1459} 家）</div>
           <input type="search" data-fk="compliance" placeholder="输入媒体名，查是否在名单内…" value="${esc(S.q2)}" class="compliance-input" />
@@ -545,6 +614,8 @@ document.addEventListener('click', async (event) => {
       render()
       return
     case 'drawer':
+      S.srcDraft = null
+      S.srcForm = { name: '', url: '', category: '都市', weight: 1 }
       S.drawer = true
       render()
       return
@@ -647,15 +718,67 @@ document.addEventListener('click', async (event) => {
       render()
       return
     }
+    case 'src-del': {
+      const id = target.dataset.id
+      if (!id) return
+      const draft = srcDraft()
+      if (draft.custom.some((c) => c.id === id)) {
+        draft.custom = draft.custom.filter((c) => c.id !== id)
+        delete draft.enabled[id]
+      } else if (!draft.removed.includes(id)) {
+        draft.removed.push(id)
+      }
+      render()
+      return
+    }
+    case 'src-restore': {
+      const id = target.dataset.id
+      const draft = srcDraft()
+      draft.removed = draft.removed.filter((x) => x !== id)
+      render()
+      return
+    }
+    case 'src-restore-all':
+      srcDraft().removed = []
+      render()
+      return
+    case 'src-add': {
+      const name = String(S.srcForm.name || '').trim()
+      const url = String(S.srcForm.url || '').trim()
+      if (!name) return toast('请先填来源名称')
+      if (!/^https?:\/\/\S+$/i.test(url)) return toast('列表页地址要以 http(s):// 开头')
+      const id = customSourceId(name, url)
+      const row = {
+        id,
+        name,
+        listName: name,
+        category: S.srcForm.category || '都市',
+        weight: Math.max(0.4, Math.min(1.6, Number(S.srcForm.weight) || 1)),
+        list: [url],
+      }
+      const draft = srcDraft()
+      const at = draft.custom.findIndex((c) => c.id === id)
+      if (at >= 0) draft.custom[at] = row
+      else draft.custom.push(row)
+      draft.enabled[id] = true
+      S.srcForm = { name: '', url: '', category: row.category, weight: 1 }
+      toast('已加入列表，点「保存稿源设置」生效')
+      render()
+      return
+    }
     case 'save-sources': {
-      const map = {}
+      const draft = srcDraft()
+      // 勾选状态以 DOM 为准（用户可能只改了勾选没触发重绘）
       document.querySelectorAll('[data-src]').forEach((node) => {
-        map[node.dataset.src] = node.checked
+        draft.enabled[node.dataset.src] = node.checked
       })
-      const res = await api('sources', { map })
+      const res = await api('sources', { enabled: draft.enabled, removed: draft.removed, custom: draft.custom })
       if (res.error) return toast(res.error)
-      S.data.sourceList = (S.data.sourceList || []).map((s) => ({ ...s, enabled: map[s.id] !== false }))
-      toast('稿源已保存')
+      const list = res.sourceList || S.data.sourceList || []
+      S.data.sourceList = list
+      S.data.sourceRemoved = res.sourceRemoved || []
+      S.srcDraft = null
+      toast(`稿源已保存：${list.filter((s) => s.enabled).length}/${list.length} 启用`)
       render()
       return
     }
@@ -697,6 +820,10 @@ document.addEventListener('input', (event) => {
     }, 300)
     return
   }
+  if (node.dataset.add) {
+    S.srcForm[node.dataset.add] = node.value
+    return
+  }
   if (node.dataset.lead) {
     const items = (dayData().draft && dayData().draft.items) || []
     const item = items.find((it) => it.cid === node.dataset.lead)
@@ -716,6 +843,11 @@ document.addEventListener('input', (event) => {
 
 document.addEventListener('change', async (event) => {
   const node = event.target
+  if (node.dataset.src) {
+    // 勾选/取消只记进草稿，等「保存稿源设置」一起落盘
+    srcDraft().enabled[node.dataset.src] = node.checked
+    return
+  }
   if (node.dataset.filter === 'section') {
     S.section = node.value
     render()
